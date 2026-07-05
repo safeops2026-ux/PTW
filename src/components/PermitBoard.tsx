@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getPermitConfig, updatePermitStatus, getAuditTrail } from '../services/ptw'
+import { getPermitConfig, subscribeToConfig, updatePermitStatus, getAuditTrail } from '../services/ptw'
 import type { PermitRecord, AuditEntry } from '../types/permit'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
@@ -29,16 +29,18 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
     const [commentMap, setCommentMap] = useState<Record<string, string>>({})
 
     useEffect(() => {
-        const loadConfig = async () => {
+        let unsub: (() => void) | undefined
+        void (async () => {
             const data = await getPermitConfig()
-            if (data?.workflow) {
-                setWorkflow(data.workflow)
-            } else {
-                setWorkflow(['Draft', 'Pending Review', 'Pending Approval', 'Approved'])
-            }
-        }
+            if (data?.workflow) setWorkflow(data.workflow)
+            else setWorkflow(['Draft', 'Pending Review', 'Pending Approval', 'Approved'])
 
-        void loadConfig()
+            unsub = subscribeToConfig((cfg) => {
+                if (cfg.workflow) setWorkflow(cfg.workflow)
+            })
+        })()
+
+        return () => unsub?.()
     }, [])
 
     const statusSummary = useMemo(() => {

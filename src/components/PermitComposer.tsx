@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { createPermit, ensurePermitConfig } from '../services/ptw'
+import { createPermit, ensurePermitConfig, subscribeToConfig } from '../services/ptw'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import type { CompanyConfig } from '../types/permit'
@@ -41,18 +41,19 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
     const [submitting, setSubmitting] = useState(false)
 
     useEffect(() => {
-        void loadConfig()
-    }, [])
+        let unsub: (() => void) | undefined
+        void (async () => {
+            // ensure default config exists and then subscribe to realtime updates
+            await ensurePermitConfig()
+            unsub = subscribeToConfig((data) => {
+                setConfig(data)
+                setPermitType((prev) => prev || (data.permitTypes?.[0] ?? 'Hot Work'))
+                setSiteId((prev) => prev || (data.sites?.[0] ?? 'Main Plant'))
+            })
+        })()
 
-    const loadConfig = async () => {
-        const data = await ensurePermitConfig()
-        if (data) {
-            const typed = data as CompanyConfig
-            setConfig(typed)
-            setPermitType(typed.permitTypes?.[0] ?? 'Hot Work')
-            setSiteId(typed.sites?.[0] ?? 'Main Plant')
-        }
-    }
+        return () => unsub?.()
+    }, [])
 
     const { notify } = useNotification()
 
@@ -232,7 +233,7 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
                         {step === steps.length - 1 && (
                             <button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Raise permit'}</button>
                         )}
-                        <button type="button" className="secondary-button" onClick={() => { void loadConfig(); setMessage('Config refreshed') }}>Refresh config</button>
+                        <button type="button" className="secondary-button" onClick={() => { void (async () => { await ensurePermitConfig(); setMessage('Config refreshed') })() }}>Refresh config</button>
                     </div>
                 </div>
             </div>

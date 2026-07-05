@@ -87,6 +87,16 @@ export function subscribeToPermits(onChange: (permits: PermitRecord[]) => void) 
     return unsubscribe
 }
 
+export function subscribeToConfig(onChange: (config: CompanyConfig) => void) {
+    const configDoc = doc(db, 'companies', companyId, 'config', 'default')
+    const unsubscribe = onSnapshot(configDoc, (snap) => {
+        if (snap.exists()) {
+            onChange(snap.data() as CompanyConfig)
+        }
+    })
+    return unsubscribe
+}
+
 export async function getPermits() {
     const permitsRef = collection(db, 'companies', companyId, 'sites', siteId, 'permits')
     const q = query(permitsRef, orderBy('createdAt', 'desc'))
