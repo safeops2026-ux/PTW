@@ -2,8 +2,51 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /companies/demo-company/{document=**} {
-      allow read, write: if request.auth != null;
+    // Users and company-scoped data
+    match /companies/{company}/{document=**} {
+      allow read: if request.auth != null;
+      // writes are restricted per-subcollection below
+      allow write: if false;
+    }
+
+    // User profiles for the company
+    match /companies/{company}/users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // Permits under sites: companies/{company}/sites/{site}/permits/{permitId}
+    match /companies/{company}/sites/{site}/permits/{permitId} {
+      allow read: if request.auth != null;
+
+      // Roles allowed to create permits in the system
+      function isCreator() {
+        return request.auth != null &&
+          (get(/databases/$(database)/documents/companies/$(company)/users/$(request.auth.uid)).data.role in ['Field Supervisor', 'Technician', 'Requester', 'Supervisor', 'Admin'])
+      }
+
+      // Roles allowed to approve or change status
+      function isApprover() {
+        return request.auth != null &&
+          (get(/databases/$(database)/documents/companies/$(company)/users/$(request.auth.uid)).data.role in ['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin'])
+      }
+
+      allow create: if isCreator();
+
+      // Updates allowed by the original creator or approver roles
+      allow update: if request.auth != null && (resource.data.createdBy == request.auth.uid || isApprover());
+
+      // Only admins or creators may delete permits
+      allow delete: if request.auth != null && (get(/databases/$(database)/documents/companies/$(company)/users/$(request.auth.uid)).data.role == 'Admin' || resource.data.createdBy == request.auth.uid);
+    }
+
+    // Audit trail: allow authenticated users to add entries (created by client actions)
+    match /companies/{company}/sites/{site}/auditTrail/{entryId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
     }
   }
 }
