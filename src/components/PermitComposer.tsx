@@ -10,14 +10,31 @@ const presetFields = [
     { key: 'Isolation point', value: 'Enter isolation location' },
 ]
 
+const templates: Record<string, { title: string; description: string; fields?: Record<string, string> }> = {
+    'Hot Work': {
+        title: 'Hot work permit',
+        description: 'Welding, cutting or grinding. Ensure fire watch and permit controls are in place.',
+        fields: { 'Hazard identification': 'Heat, sparks, fire risk', 'Control measures': 'Fire watch, extinguishers nearby' },
+    },
+    'Confined Space': {
+        title: 'Confined space entry',
+        description: 'Entry into tank or enclosed space. Ensure gas testing and rescue plan.',
+        fields: { 'Atmosphere test': 'Record gas readings', 'Entry supervisor': '' },
+    },
+    'Electrical Isolation / LOTO': {
+        title: 'Electrical isolation',
+        description: 'Lockout/tagout required before maintenance. Verify isolation points.',
+        fields: { 'Isolation point': 'Main switch / panel', 'LOTO reference': '' },
+    },
+}
+
 export function PermitComposer({ onCreated }: { onCreated: () => void }) {
     const { user, profile } = useAuth()
     const [title, setTitle] = useState('')
     const [description, setDescription] = useState('')
     const [permitType, setPermitType] = useState('Hot Work')
     const [siteId, setSiteId] = useState('Main Plant')
-    const [customFieldLabel, setCustomFieldLabel] = useState('')
-    const [customFieldValue, setCustomFieldValue] = useState('')
+
     const [customFields, setCustomFields] = useState<Record<string, string>>({})
     const [message, setMessage] = useState('')
     const [config, setConfig] = useState<CompanyConfig | null>(null)
@@ -39,33 +56,13 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
 
     const { notify } = useNotification()
 
-    const handleAddCustomField = () => {
-        const key = customFieldLabel.trim()
-        const value = customFieldValue.trim()
-
-        if (!key || !value) {
-            setMessage('Enter both a field name and a value.')
-            return
-        }
-
-        setCustomFields((prev) => ({ ...prev, [key]: value }))
-        setCustomFieldLabel('')
-        setCustomFieldValue('')
-        setMessage('Custom field added.')
-    }
 
     const handleAddPresetField = (key: string, value: string) => {
         setCustomFields((prev) => ({ ...prev, [key]: value }))
         setMessage(`${key} field added.`)
     }
 
-    const handleRemoveCustomField = (key: string) => {
-        setCustomFields((prev) => {
-            const next = { ...prev }
-            delete next[key]
-            return next
-        })
-    }
+    // custom field helpers are handled inline in the guided form
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault()
@@ -116,40 +113,32 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
         }
     }
 
-    return (
-        <form className="card" onSubmit={handleSubmit}>
-            <h3>Create permit</h3>
-            <p className="muted">Raise a new permit with site, type, description, and optional custom data.</p>
-            <label className="field-label" htmlFor="permit-title">Permit title</label>
-            <input
-                id="permit-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Permit title"
-                required
-            />
+    const steps = ['Work details', 'Hazards', 'Controls & Isolation', 'Approvals', 'Review']
 
-            <label className="field-label" htmlFor="permit-description">Description</label>
-            <textarea
-                id="permit-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Describe the work, hazards, and controls"
-                rows={4}
-            />
+    const [step, setStep] = useState(0)
+
+    const applyTemplate = (name: string) => {
+        const t = templates[name]
+        if (!t) return
+        setPermitType(name)
+        setTitle(t.title)
+        setDescription(t.description)
+        if (t.fields) setCustomFields((prev) => ({ ...prev, ...t.fields }))
+        setMessage(`${name} template applied.`)
+    }
+
+    return (
+        <form className="card" onSubmit={handleSubmit} aria-label="Permit composer">
+            <h3>Create permit</h3>
+            <p className="muted">Step-by-step guided permit creation. Use templates to prefill common permit types.</p>
 
             <div className="select-row">
                 <div>
-                    <label className="field-label" htmlFor="permit-type">Permit type</label>
-                    <select
-                        id="permit-type"
-                        value={permitType}
-                        onChange={(event) => setPermitType(event.target.value)}
-                    >
-                        {(config?.permitTypes ?? ['Hot Work', 'Cold Work', 'Confined Space Entry', 'Electrical Isolation / LOTO', 'Mechanical Isolation', 'Excavation / Earthworks', 'Working at Height', 'Temporary Power', 'Permit Extension / Revalidation', 'Inspection / Maintenance']).map((item) => (
-                            <option key={item} value={item}>
-                                {item}
-                            </option>
+                    <label className="field-label" htmlFor="template-select">Template</label>
+                    <select id="template-select" value={permitType} onChange={(e) => applyTemplate(e.target.value)} title="Choose a template to prefill fields">
+                        <option value="">-- pick a template --</option>
+                        {Object.keys(templates).map((key) => (
+                            <option key={key} value={key}>{key}</option>
                         ))}
                     </select>
                 </div>
@@ -159,82 +148,93 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
                         id="permit-site"
                         value={siteId}
                         onChange={(event) => setSiteId(event.target.value)}
+                        title="Select site or location for this permit"
                     >
-                        {(config?.sites ?? ['Main Plant', 'Boiler House', 'Pump House', 'Compressor Station', 'Control Room', 'Storage Yard', 'Workshop', 'Tank Farm', 'Loading Bay', 'Service Platform']).map((item) => (
-                            <option key={item} value={item}>
-                                {item}
-                            </option>
+                        {(config?.sites ?? ['Main Plant', 'Boiler House', 'Pump House']).map((item) => (
+                            <option key={item} value={item}>{item}</option>
                         ))}
                     </select>
                 </div>
             </div>
 
-            <div className="permit-guide card guide-card">
-                <h4>Permit type guide</h4>
-                <ul>
-                    <li><strong>Hot Work</strong>: welding, cutting, grinding or anything that creates sparks.</li>
-                    <li><strong>Cold Work</strong>: non-sparking maintenance, inspections, and general tasks.</li>
-                    <li><strong>Confined Space Entry</strong>: work inside tanks, vessels, booths, or enclosed areas.</li>
-                    <li><strong>Electrical Isolation / LOTO</strong>: locking out power sources before maintenance.</li>
-                    <li><strong>Mechanical Isolation</strong>: isolating valves, pipes, and moving machinery.</li>
-                    <li><strong>Excavation / Earthworks</strong>: digging, trenching, or ground work near equipment.</li>
-                    <li><strong>Working at Height</strong>: scaffolding, ladders, platforms, or rooftop access.</li>
-                    <li><strong>Temporary Power</strong>: portable generator, temporary supply, or electrical extensions.</li>
-                    <li><strong>Inspection / Maintenance</strong>: routine checks, calibrations, and preventive work.</li>
-                    <li><strong>Permit Extension / Revalidation</strong>: extend or renew an active permit.</li>
-                </ul>
-            </div>
-
-            <div className="field-suggestions">
-                {presetFields.map((preset) => (
-                    <button
-                        type="button"
-                        key={preset.key}
-                        className="tertiary-button"
-                        onClick={() => handleAddPresetField(preset.key, preset.value)}
-                    >
-                        Add {preset.key}
-                    </button>
-                ))}
-            </div>
-
-            <div className="custom-field-row">
-                <input
-                    value={customFieldLabel}
-                    onChange={(event) => setCustomFieldLabel(event.target.value)}
-                    placeholder="Field name"
-                />
-                <input
-                    value={customFieldValue}
-                    onChange={(event) => setCustomFieldValue(event.target.value)}
-                    placeholder="Field value"
-                />
-                <button type="button" className="secondary-button" onClick={handleAddCustomField}>
-                    Add field
-                </button>
-            </div>
-
-            {Object.keys(customFields).length > 0 ? (
-                <div className="custom-field-list">
-                    <strong>Additional fields</strong>
-                    {Object.entries(customFields).map(([key, value]) => (
-                        <div key={key} className="custom-field-item">
-                            <span>{key}: {value}</span>
-                            <button type="button" className="tertiary-button" onClick={() => handleRemoveCustomField(key)}>
-                                Remove
-                            </button>
-                        </div>
+            <div className="stepper">
+                <div className="step-labels">
+                    {steps.map((label, idx) => (
+                        <button key={label} type="button" className={`step-pill ${idx === step ? 'active' : ''}`} onClick={() => setStep(idx)}>
+                            {label}
+                        </button>
                     ))}
                 </div>
-            ) : null}
 
-            <div className="action-row">
-                <button type="submit" disabled={submitting}>
-                    {submitting ? 'Saving...' : 'Raise permit'}
-                </button>
-                <button type="button" className="secondary-button" onClick={() => void loadConfig()}>
-                    Refresh config
-                </button>
+                <div className="step-content">
+                    {step === 0 && (
+                        <div>
+                            <label className="field-label" htmlFor="permit-title">Permit title</label>
+                            <input id="permit-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Permit title" required title="Short descriptive title for the permit" />
+
+                            <label className="field-label" htmlFor="permit-description">Work details</label>
+                            <textarea id="permit-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the work to be done" rows={4} title="Describe the work, location, and main tasks" />
+                        </div>
+                    )}
+
+                    {step === 1 && (
+                        <div>
+                            <label className="field-label">Hazards</label>
+                            <p className="muted">List hazards and select preset suggestions.</p>
+                            <div className="field-suggestions">
+                                {presetFields.map((preset) => (
+                                    <button type="button" key={preset.key} className="tertiary-button" onClick={() => handleAddPresetField(preset.key, preset.value)}>{preset.key}</button>
+                                ))}
+                            </div>
+                            <textarea value={customFields['Hazard identification'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Hazard identification': e.target.value }))} placeholder="Describe hazards" rows={3} />
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div>
+                            <label className="field-label">Controls & Isolation</label>
+                            <p className="muted">Specify controls, PPE, and isolation points.</p>
+                            <textarea value={customFields['Control measures'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Control measures': e.target.value }))} placeholder="Control measures" rows={3} />
+                            <input value={customFields['Isolation point'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Isolation point': e.target.value }))} placeholder="Isolation point" />
+                        </div>
+                    )}
+
+                    {step === 3 && (
+                        <div>
+                            <label className="field-label">Approvals</label>
+                            <p className="muted">Assign approvers and add review notes.</p>
+                            <input value={customFields['Approver'] ?? profile?.role ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, Approver: e.target.value }))} placeholder="Approver role or user" />
+                            <textarea value={customFields['Approval notes'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Approval notes': e.target.value }))} placeholder="Notes for approvers" rows={2} />
+                        </div>
+                    )}
+
+                    {step === 4 && (
+                        <div>
+                            <h4>Review</h4>
+                            <p className="muted">Confirm details before raising the permit.</p>
+                            <div className="review-summary">
+                                <div><strong>Title:</strong> {title}</div>
+                                <div><strong>Type:</strong> {permitType}</div>
+                                <div><strong>Site:</strong> {siteId}</div>
+                                <div><strong>Description:</strong> {description}</div>
+                                {Object.entries(customFields).map(([k, v]) => (
+                                    <div key={k}><strong>{k}:</strong> {v}</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="step-actions">
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        {step > 0 && <button type="button" className="tertiary-button" onClick={() => setStep((s) => s - 1)}>Back</button>}
+                        {step < steps.length - 1 && <button type="button" onClick={() => setStep((s) => s + 1)}>Next</button>}
+                        {step === steps.length - 1 && (
+                            <button type="submit" disabled={submitting}>{submitting ? 'Saving...' : 'Raise permit'}</button>
+                        )}
+                        <button type="button" className="secondary-button" onClick={() => { void loadConfig(); setMessage('Config refreshed') }}>Refresh config</button>
+                    </div>
+                </div>
             </div>
 
             {message ? <p className="message">{message}</p> : null}
