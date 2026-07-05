@@ -10,6 +10,7 @@ export interface PermitRecord {
     createdAt: string
     updatedAt: string
     customFields?: Record<string, string>
+    attachments?: Array<{ name: string; url: string; path?: string }>
 }
 
 export interface AuditEntry {

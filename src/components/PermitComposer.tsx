@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { createPermit, ensurePermitConfig, subscribeToConfig } from '../services/ptw'
+import { useEffect, useState, useRef, type FormEvent } from 'react'
+import { createPermit, ensurePermitConfig, subscribeToConfig, uploadAttachments } from '../services/ptw'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import type { CompanyConfig } from '../types/permit'
@@ -36,7 +36,9 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
     const [siteId, setSiteId] = useState('Main Plant')
 
     const [customFields, setCustomFields] = useState<Record<string, string>>({})
+    const [attachments, setAttachments] = useState<Array<{ name: string; url: string }> | null>(null)
     const [message, setMessage] = useState('')
+    const fileInputRef = useRef<HTMLInputElement | null>(null)
     const [config, setConfig] = useState<CompanyConfig | null>(null)
     const [submitting, setSubmitting] = useState(false)
 
@@ -93,6 +95,11 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
         try {
             setSubmitting(true)
             await ensurePermitConfig()
+            let uploaded: any[] | undefined
+            if ((fileInputRef.current?.files?.length ?? 0) > 0) {
+                uploaded = await uploadAttachments(fileInputRef.current!.files!, 'permits')
+            }
+
             await createPermit({
                 title: trimmedTitle,
                 description: trimmedDescription,
@@ -102,6 +109,7 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
                 createdBy: user.uid,
                 assignedTo: [profile.role],
                 customFields,
+                attachments: uploaded ?? [],
             })
             const successMessage = 'Permit raised and saved to Firestore.'
             setMessage(successMessage)
@@ -204,6 +212,20 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
                             <p className="muted">Specify controls, PPE, and isolation points.</p>
                             <textarea value={customFields['Control measures'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Control measures': e.target.value }))} placeholder="Control measures" rows={3} />
                             <input value={customFields['Isolation point'] ?? ''} onChange={(e) => setCustomFields((p) => ({ ...p, 'Isolation point': e.target.value }))} placeholder="Isolation point" />
+                            <div style={{ marginTop: 8 }}>
+                                <label className="field-label">Attachments</label>
+                                <input ref={fileInputRef} type="file" multiple onChange={() => {
+                                    const files = fileInputRef.current?.files
+                                    if (files && files.length > 0) {
+                                        setAttachments(Array.from(files).map((f) => ({ name: f.name, url: '' })))
+                                    } else {
+                                        setAttachments(null)
+                                    }
+                                }} />
+                                {attachments && attachments.length > 0 ? (
+                                    <div className="muted">{attachments.length} file(s) selected</div>
+                                ) : null}
+                            </div>
                         </div>
                     )}
 

@@ -11,7 +11,8 @@ import {
     updateDoc,
     where,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { db, storage } from './firebase'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import type { AuditEntry, CompanyConfig, PermitRecord } from '../types/permit'
 
 const companyId = 'demo-company'
@@ -112,6 +113,12 @@ export async function createPermit(permit: Omit<PermitRecord, 'id' | 'createdAt'
         updatedAt: serverTimestamp(),
     })
 
+    // if attachments were included (client may have uploaded and passed urls)
+    if ((permit as any).attachments && Array.isArray((permit as any).attachments)) {
+        const permitRef = doc(db, 'companies', companyId, 'sites', siteId, 'permits', permitDoc.id)
+        await updateDoc(permitRef, { attachments: (permit as any).attachments })
+    }
+
     const auditRef = collection(db, 'companies', companyId, 'sites', siteId, 'auditTrail')
     await addDoc(auditRef, {
         permitId: permitDoc.id,
@@ -122,6 +129,25 @@ export async function createPermit(permit: Omit<PermitRecord, 'id' | 'createdAt'
     })
 
     return permitDoc
+}
+
+export async function uploadAttachment(file: File, permitFolder?: string) {
+    const path = `companies/${companyId}/sites/${siteId}/attachments/${permitFolder ?? 'temp'}/${Date.now()}-${file.name}`
+    const r = storageRef(storage, path)
+    await uploadBytes(r, file)
+    const url = await getDownloadURL(r)
+    return { name: file.name, url, path }
+}
+
+export async function uploadAttachments(files: File[] | FileList, permitFolder?: string) {
+    const arr = Array.from(files as any as File[])
+    const results = []
+    for (const f of arr) {
+        // eslint-disable-next-line no-await-in-loop
+        const meta = await uploadAttachment(f, permitFolder)
+        results.push(meta)
+    }
+    return results
 }
 
 export async function updatePermitStatus(permitId: string, status: string, message: string, actorId: string) {
