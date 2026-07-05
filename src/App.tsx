@@ -3,6 +3,7 @@ import './App.css'
 import { ExportPanel } from './components/ExportPanel'
 import { PermitBoard } from './components/PermitBoard'
 import { PermitComposer } from './components/PermitComposer'
+import { AdminTemplates } from './components/AdminTemplates'
 import { useAuth } from './context/AuthContext'
 import { getPermits, subscribeToPermits } from './services/ptw'
 import type { PermitRecord } from './types/permit'
@@ -86,6 +87,12 @@ function App() {
           </p>
         </div>
       </div>
+
+      {profile && ['Admin', 'Manager'].includes(profile.role) ? (
+        <div className="dashboard-grid">
+          <AdminTemplates />
+        </div>
+      ) : null}
 
       <div className="dashboard-grid">
         <PermitBoard permits={permits} onUpdated={() => void refreshPermits()} />

@@ -98,6 +98,12 @@ export function subscribeToConfig(onChange: (config: CompanyConfig) => void) {
     return unsubscribe
 }
 
+export async function updatePermitConfig(patch: Partial<CompanyConfig>) {
+    const configDoc = doc(db, 'companies', companyId, 'config', 'default')
+    await setDoc(configDoc, patch, { merge: true })
+    return true
+}
+
 export async function getPermits() {
     const permitsRef = collection(db, 'companies', companyId, 'sites', siteId, 'permits')
     const q = query(permitsRef, orderBy('createdAt', 'desc'))
