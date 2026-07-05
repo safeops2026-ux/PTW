@@ -34,3 +34,8 @@ node_modules/
 
 # Build / output
 dist/
+.agents/
+gh_job_details.json
+skills-lock.json
+tmp.txt
+CLAUDE.md
