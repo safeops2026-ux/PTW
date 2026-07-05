@@ -15,7 +15,7 @@ function formatDate(value: unknown) {
 }
 
 export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; onUpdated: () => void }) {
-    const { user } = useAuth()
+    const { user, profile } = useAuth()
     const { notify } = useNotification()
     const [message, setMessage] = useState('')
     const [workflow, setWorkflow] = useState<string[]>([])
@@ -73,6 +73,8 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
         })
     }, [permits, search, statusFilter, typeFilter, siteFilter])
 
+    const approverRoles = ['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin']
+
     const handleUpdateStatus = async (permitId: string, status: string) => {
         const permit = permits.find((item) => item.id === permitId)
         if (!permit || !user) {
@@ -82,6 +84,13 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
 
         if (status === permit.status) {
             setMessage('Permit is already at that status.')
+            return
+        }
+
+        const isCreator = profile && permit.createdBy === profile.uid
+        const isApprover = profile && approverRoles.includes(profile.role)
+        if (!isCreator && !isApprover) {
+            setMessage('You do not have permission to change this permit status.')
             return
         }
 
@@ -189,7 +198,7 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
             ) : (
                 <div className="permit-list">
                         {filteredPermits.map((permit) => {
-                            const canMove = Boolean(user) && workflow.length > 0
+                            const canMove = Boolean(user) && workflow.length > 0 && (profile ? (['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin'].includes(profile.role) || permit.createdBy === profile.uid) : false)
                             const expanded = expandedPermitId === permit.id
 
                         return (
@@ -262,15 +271,21 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
                                             />
 
                                             <div className="approval-actions">
-                                                <button type="button" className="secondary-button" onClick={() => void handleAction(permit.id ?? '', 'Pending Review')}>
-                                                    Request review
-                                                </button>
-                                                <button type="button" onClick={() => void handleAction(permit.id ?? '', 'Approved')}>
-                                                    Approve
-                                                </button>
-                                                <button type="button" className="tertiary-button" onClick={() => void handleAction(permit.id ?? '', 'Rejected')}>
-                                                    Reject
-                                                </button>
+                                                {profile && ((['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin'].includes(profile.role)) || (permit.assignedTo ?? []).includes(profile.role)) ? (
+                                                    <>
+                                                        <button type="button" className="secondary-button" onClick={() => void handleAction(permit.id ?? '', 'Pending Review')}>
+                                                            Request review
+                                                        </button>
+                                                        <button type="button" onClick={() => void handleAction(permit.id ?? '', 'Approved')}>
+                                                            Approve
+                                                        </button>
+                                                        <button type="button" className="tertiary-button" onClick={() => void handleAction(permit.id ?? '', 'Rejected')}>
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <div className="muted">You do not have approval permissions for this permit.</div>
+                                                )}
                                             </div>
                                         </div>
 

@@ -65,6 +65,8 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
 
     // custom field helpers are handled inline in the guided form
 
+    const allowedCreatorRoles = ['Field Supervisor', 'Technician', 'Requester', 'Supervisor', 'Admin']
+
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault()
         setMessage('')
@@ -80,6 +82,11 @@ export function PermitComposer({ onCreated }: { onCreated: () => void }) {
 
         if (!user || !profile) {
             setMessage('Sign in before raising a permit.')
+            return
+        }
+
+        if (!allowedCreatorRoles.includes(profile.role)) {
+            setMessage('Your account does not have permission to raise permits. Contact your administrator.')
             return
         }
 
