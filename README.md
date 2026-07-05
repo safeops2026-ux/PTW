@@ -1,70 +1,96 @@
 # SafeLink HSE Suite — Permit to Work (PTW)
 
-## Project overview
+## 🌟 Overview
 
-This project is a React + TypeScript application built with Vite. It is designed to manage Permit to Work workflows with Firebase Authentication, Firestore storage, role-based access, permit lifecycle progression, audit trail logging, and multi-format export.
+SafeLink HSE Suite is a lightweight React + TypeScript application built on Vite.
 
-The current implementation includes:
+It models a Permit to Work workflow with:
 
-- Email/password signup and login
+- Firebase Authentication and Firestore persistence
+- role-aware permit dashboard access
+- dynamic permit creation with custom metadata
+- configurable workflow states and status updates
+- audit trail logging for permit changes
+- browser-based export to PDF, Excel, and PNG
+
+> Note: Word/DOCX export support has been removed in this branch.
+
+---
+
+## 🚀 Why this project exists
+
+This repository is designed to be both a working permit management app and a tutorial for building a modern Firebase-backed React application.
+
+It is useful for:
+
+- learning Firebase auth + Firestore patterns
+- mastering dynamic forms and custom fields in React
+- implementing workflow state management
+- generating browser exports without server-side rendering
+- organizing a Vite + TypeScript frontend project cleanly
+
+---
+
+## 🧩 What’s included
+
+- Email/password login and signup
 - Google sign-in
 - Password reset
-- Role-aware dashboard access
-- Firestore-based user profile management
-- Instant permit creation with dynamic custom fields
-- Workflow stage updates using configurable permit statuses
-- Export to PDF, Excel, Word (DOCX), and PNG image
-- Firebase environment parity for demo and production
+- protected dashboard routes
+- Firestore user profile management
+- permit creation with custom fields
+- workflow state updates and audit trail writes
+- export to PDF, Excel, and PNG
+- Vite-based production build and code splitting
 
-## Tech stack
+---
 
-- React 19 with TypeScript
-- Vite build system
-- Firebase Authentication
-- Firebase Firestore
-- jsPDF + jsPDF-AutoTable for PDF export
-- xlsx for Excel export
-- docx for Word/DOCX export
-- Canvas image generation for PNG export
-- React Router DOM v7 for routing
-- Oxlint for linting
+## 📁 Project layout
 
-## Folder structure
+### Main files
 
-- `src/App.tsx` — dashboard shell and main permit page
-- `src/routes.tsx` — route definitions and auth guarding
-- `src/context/AuthContext.tsx` — Firebase auth, profile management, signup/login/reset
-- `src/context/NotificationContext.tsx` — application notifications and toast system
-- `src/components/AppShell.tsx` — shared header, navigation, and layout
-- `src/components/RequireAuth.tsx` — route protection for authenticated users
-- `src/components/PermitComposer.tsx` — permit creation UI and custom fields
-- `src/components/PermitBoard.tsx` — permit lifecycle management UI
-- `src/components/ExportPanel.tsx` — export UI and format selection
-- `src/components/Notifications.tsx` — notification rendering
-- `src/services/firebase.ts` — Firebase initialization
-- `src/services/ptw.ts` — permit Firestore CRUD and audit trail operations
-- `src/services/exports.ts` — export helper functions
-- `src/types/permit.ts` — shared permit and config types
-- `src/config/client.ts` — application-specific client settings
-- `.firebaserc` — Firebase CLI alias configuration
+- `src/App.tsx` — main application shell and permit dashboard
+- `src/routes.tsx` — route definitions and auth guards
+- `src/context/AuthContext.tsx` — authentication and profile logic
+- `src/context/NotificationContext.tsx` — toast notification system
+- `src/components/AppShell.tsx` — shared header, layout, and navigation
+- `src/components/RequireAuth.tsx` — auth-protected route wrapper
+- `src/components/PermitComposer.tsx` — permit creation form
+- `src/components/PermitBoard.tsx` — permit workflow board
+- `src/components/ExportPanel.tsx` — export controls and actions
+- `src/components/Notifications.tsx` — toast rendering
+- `src/services/firebase.ts` — Firebase SDK initialization
+- `src/services/ptw.ts` — Firestore permit and audit helpers
+- `src/services/exports.ts` — browser export utilities
+- `src/types/permit.ts` — shared permit and configuration types
+- `src/config/client.ts` — client-side defaults and branding
+- `.firebaserc` — Firebase deployment aliases
 
-## Environment setup
+---
 
-### Required tools
+## 🛠️ Setup guide
+
+### Prerequisites
 
 - Node.js 18+ or later
 - npm 10+ or later
-- Firebase CLI (optional for deployment)
+- Firebase CLI (optional)
 
-### Local setup
+### Install dependencies
 
-1. Clone the repository.
-2. Run `npm install`.
-3. Create environment files if not present:
-   - `.env.development`
-   - `.env.demo`
-   - `.env.production`
-4. Fill each `.env.*` file with Firebase config values:
+```bash
+npm install
+```
+
+### Environment variables
+
+Create these files if they don’t exist:
+
+- `.env.development`
+- `.env.demo`
+- `.env.production`
+
+Add the Firebase values in each file:
 
 ```env
 VITE_FIREBASE_API_KEY=YOUR_API_KEY
@@ -76,52 +102,38 @@ VITE_FIREBASE_APP_ID=YOUR_APP_ID
 VITE_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID
 ```
 
-1. Start development in demo mode:
+### Local development
 
 ```bash
 npm run dev
 ```
 
-1. Start development explicitly in demo mode:
+### Build commands
+
+```bash
+npm run build
+npm run preview
+```
+
+Optional modes:
 
 ```bash
 npm run dev:demo
-```
-
-1. Build the demo bundle:
-
-```bash
 npm run build:demo
-```
-
-1. Build the production bundle:
-
-```bash
 npm run build:prod
-```
-
-1. Preview the production build:
-
-```bash
 npm run preview:prod
 ```
 
-1. Preview the demo build:
+---
 
-```bash
-npm run preview:demo
-```
+## ☁️ Firebase configuration
 
-## Firebase environment configuration
+This repository includes Firebase aliases in `.firebaserc`:
 
-This project uses two Firebase aliases in `.firebaserc`:
+- `demo` → `hse-safelink`
+- `prod` → `hse-safelink-prod`
 
-- `demo` maps to the demo project `hse-safelink`
-- `prod` maps to the production project `hse-safelink-prod`
-
-The default Firebase CLI project is set to `demo`, so `npx firebase deploy` will target the demo environment unless changed.
-
-Use the CLI aliases like this:
+Use the Firebase CLI like this:
 
 ```bash
 npx firebase use demo
@@ -133,19 +145,24 @@ npx firebase use prod
 npx firebase deploy --project prod
 ```
 
-## Application architecture
+---
+
+## 🧠 Architecture overview
 
 ### Firebase initialization
 
-`src/services/firebase.ts` initializes Firebase using environment variables and exports:
+`src/services/firebase.ts` is the single source of Firebase configuration.
+It reads `VITE_FIREBASE_*` environment values and exports:
 
-- `auth` for Firebase Authentication
-- `db` for Firestore
-- `storage` for future storage use
+- `auth` for authentication flows
+- `db` for Firestore database operations
+- `storage` for future file handling
 
-### Authentication and user profile
+### Authentication and profile handling
 
-`src/context/AuthContext.tsx` implements:
+`src/context/AuthContext.tsx` provides authentication and profile state.
+
+It implements:
 
 - `signIn(email, password)`
 - `signInWithGoogle()`
@@ -153,11 +170,11 @@ npx firebase deploy --project prod
 - `resetPassword(email)`
 - `signOutUser()`
 
-User profiles are stored under Firestore path:
+User profiles live in Firestore at:
 
 - `companies/demo-company/users/{uid}`
 
-Profile fields include:
+Each profile contains:
 
 - `uid`
 - `email`
@@ -166,50 +183,107 @@ Profile fields include:
 - `phone`
 - `createdAt`
 
-If the authenticated user has no existing Firestore profile, the app creates a fallback profile and assigns `Field Supervisor` by default.
+If a signed-in user has no profile, the app creates a fallback profile and defaults the role to `Field Supervisor`.
 
-### Routing
+### Routes and access control
 
-`src/routes.tsx` defines route handling with React Router DOM:
+`src/routes.tsx` defines the app routes.
 
-- `/` — dashboard guarded by `RequireAuth`
-- `/permits` — dashboard alias guarded by `RequireAuth`
-- `/login` — login page
-- `/signup` — signup page
-- `*` — catch-all redirect to `/`
+Protected pages:
 
-`RequireAuth` checks the auth state and redirects unauthenticated users to `/login`.
+- `/`
+- `/permits`
+
+Public pages:
+
+- `/login`
+- `/signup`
+
+`RequireAuth` ensures only authenticated users can reach the dashboard.
 
 ### App shell and notifications
 
-`AppShell` renders the top-level layout, navigation links, and notification host. It uses `Notifications` to display toast messages for success, error, and info events.
+`AppShell` provides the shared header, navigation, and page layout.
+`NotificationContext` powers toast messages for success, error, and info feedback.
 
-### Dashboard flow
+### Permit dashboard flow
 
-`src/App.tsx` loads permit records from Firestore and renders:
+`src/App.tsx` loads permit data from Firestore and renders:
 
-- `PermitComposer` for submitting new permits
-- `PermitBoard` for viewing and updating permit status
-- `ExportPanel` for exporting permit data
+- `PermitComposer` — create new permits
+- `PermitBoard` — view and update permit statuses
+- `ExportPanel` — export current permit data
 
-### Firestore data model
+### Firestore model
 
-The permit backend uses the following Firestore structure:
+The app stores data in the following structure:
 
-- `companies/demo-company/config` — application config documents
+- `companies/demo-company/config` — config documents
 - `companies/demo-company/users/{uid}` — user profiles
-- `companies/demo-company/sites/demo-site/permits/{permitId}` — permits
-- `companies/demo-company/sites/demo-site/auditTrail/{auditId}` — permit audit events
+- `companies/demo-company/sites/demo-site/permits/{permitId}` — permit documents
+- `companies/demo-company/sites/demo-site/auditTrail/{auditId}` — audit events
 
-### Permit config defaults
+### Default permit configuration
 
-The app writes default config to Firestore when `ensurePermitConfig()` runs and no config exists.
-Default settings include:
+If configuration is missing, `ensurePermitConfig()` creates defaults:
 
-- roles: `Field Supervisor`, `Area Authority`, `HSE Officer`, `Admin`
+- roles: `Field Supervisor`, `Area Authority`, `HSE Officer`, `Supervisor`, `Manager`, `Admin`
 - workflow: `Draft`, `Pending Review`, `Pending Approval`, `Approved`, `Work in Progress`, `Closed`, `Rejected`, `Cancelled`
-- permitTypes: `Hot Work`, `Confined Space`, `Electrical Isolation`
-- sites: `demo-site`
+- permit types: `Hot Work`, `Confined Space`, `Electrical Isolation`, `Working at Height`, `Excavation / Earthworks`, `Line Breaking / Pipeline Maintenance`, `Mechanical Isolation`, `Permit Extension / Revalidation`, `Shutdown / Outage`, `Chemical Handling`, `Inspection / Survey`, `Temporary Power`
+- sites: `Main Plant`, `Boiler House`, `Pump House`, `Compressor Station`, `Control Room`, `Storage Yard`, `Workshop`, `Tank Farm`, `Loading Bay`, `Service Platform`
+
+### Recommended PTW permit categories
+
+This app is designed for a general industrial plant-style PTW system. The standard permit categories available in the UI include:
+
+- `Hot Work`
+- `Cold Work`
+- `Confined Space Entry`
+- `Electrical Isolation / LOTO`
+- `Mechanical Isolation`
+- `Excavation / Earthworks`
+- `Working at Height`
+- `Temporary Power`
+- `Shutdown / Outage`
+- `Chemical Handling`
+- `Inspection / Survey`
+- `Permit Extension / Revalidation`
+
+### Common site / location values
+
+To support plant-style operations, the app uses generic site locations that can be adapted to any industrial facility:
+
+- `Main Plant`
+- `Boiler House`
+- `Pump House`
+- `Compressor Station`
+- `Control Room`
+- `Storage Yard`
+- `Workshop`
+- `Tank Farm`
+- `Loading Bay`
+- `Service Platform`
+
+### Sample permit JSON schema
+
+A typical permit object in this app follows this structure:
+
+```json
+{
+  "title": "Hot Work - Tank 7 Welding",
+  "description": "Weld repair on Tank 7 nozzle. Fire watch and gas monitoring required.",
+  "permitType": "Hot Work",
+  "siteId": "Tank Farm",
+  "status": "Draft",
+  "createdBy": "user-uid",
+  "assignedTo": ["HSE Officer"],
+  "customFields": {
+    "Hazards": "Sparks, flame, heat",
+    "Controls": "Fire watch, hot work blanket, PPE",
+    "Authorized Personnel": "A. Patel, R. Kumar"
+  }
+}
+```
 
 ### Permit creation
 
@@ -219,45 +293,88 @@ Default settings include:
 - description
 - permit type
 - site/location
-- arbitrary custom fields as key/value pairs
+- dynamic custom fields
 
-Custom fields are stored inside each permit document under `customFields`.
+Custom field values are stored at `customFields` inside each permit.
 
-### Permit lifecycle management
+### Workflow and status updates
 
-`PermitBoard` loads the workflow stages from Firestore config and renders a status selector for each permit.
-Users can choose a new state and submit it, which triggers `updatePermitStatus()` and writes an audit event.
+`PermitBoard` renders each permit and allows workflow transitions.
+Every status change calls `updatePermitStatus()` and writes an audit event.
 
-### Export capabilities
+### Export features
 
-`ExportPanel` exports permit data in these formats:
+`ExportPanel` exports data to:
 
 - PDF via `jsPDF` + `jspdf-autotable`
 - Excel via `xlsx`
-- Word/DOCX via `docx`
-- PNG image via HTML canvas rendering
+- PNG via HTML canvas image generation
 
-Export rows include standard permit fields and any custom fields added by users.
+Export logic is handled entirely client-side.
 
-## Implementation steps
+---
 
-### Setup and install
+## 🧪 How to learn this project
 
-1. Create a new Vite React app with TypeScript.
-2. Install React, React DOM, Vite, TypeScript, and React Router DOM.
-3. Install Firebase SDK for auth and Firestore.
-4. Install `jspdf`, `jspdf-autotable`, and `xlsx` for export features.
-5. Add `docx` for Word export.
-6. Install Oxlint and prepare linting configuration.
-7. Create project folders: `components`, `context`, `services`, `pages`, `types`, `config`.
-8. Add `src/services/firebase.ts` to initialize Firebase from environment variables.
-9. Add `.firebaserc` with demo and prod alias mapping.
-10. Add environment variable schemas in `.env.development`, `.env.demo`, `.env.production` as needed.
+Follow this step-by-step path for full clarity:
 
-### Authentication setup
+1. Start with `src/services/firebase.ts` to understand the Firebase setup.
+2. Read `src/context/AuthContext.tsx` for auth and profile loading.
+3. Inspect `src/routes.tsx` and `src/components/RequireAuth.tsx` for routing rules.
+4. Examine `src/App.tsx` to see the overall page composition.
+5. Open `src/services/ptw.ts` to learn how permits and audit events are stored.
+6. Review `src/components/PermitComposer.tsx` for dynamic form behavior.
+7. Review `src/components/PermitBoard.tsx` for status changes and workflow logic.
+8. Review `src/components/ExportPanel.tsx` and `src/services/exports.ts` for export flows.
 
-1. Create `AuthContext` to expose auth state and methods.
-2. Initialize `useState` for `user`, `profile`, and `loading`.
+This order walks you from initialization, to auth, to data, to UI, and finally to export.
+
+---
+
+## ✅ Key takeaways
+
+- This is a Vite + React + Firebase workspace built for learners and maintainers.
+- The app is designed around Firestore-driven configuration and workflow.
+- Custom permit fields are supported without additional backend schema changes.
+- Export functions are browser-native and dynamically loaded.
+- Word export is intentionally removed to keep the bundle smaller.
+
+---
+
+## 📦 Commands summary
+
+```bash
+npm install
+npm run dev
+npm run build
+npm run preview
+```
+
+Optional commands:
+
+```bash
+npm run dev:demo
+npm run build:demo
+npm run build:prod
+npm run preview:prod
+```
+
+---
+
+## 💡 Recommended next improvements
+
+- Add Firestore security rules for role-based access
+- Add an audit history page for permits
+- Add permit filtering and search
+- Add admin user/role management
+- Add file attachment support
+
+---
+
+## 📝 Notes
+
+Keep this README updated when you add new features, change exports, or modify Firebase deployment settings.
+
 3. Use `onAuthStateChanged` to monitor Firebase auth state.
 4. Fetch user profile from Firestore when auth changes.
 5. Create fallback user profile if Firestore record is missing.

@@ -1,14 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getPermitConfig, updatePermitStatus } from '../services/ptw'
 import type { PermitRecord } from '../types/permit'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+
+function formatDate(value: unknown) {
+    if (!value) return 'Unknown'
+    if (typeof value === 'string') return value
+    if (typeof value === 'number') return new Date(value).toLocaleString()
+    if (typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
+        return value.toDate().toLocaleString()
+    }
+    return String(value)
+}
 
 export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; onUpdated: () => void }) {
     const { user } = useAuth()
     const { notify } = useNotification()
     const [message, setMessage] = useState('')
     const [workflow, setWorkflow] = useState<string[]>([])
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState('All')
+    const [typeFilter, setTypeFilter] = useState('All')
+    const [siteFilter, setSiteFilter] = useState('All')
+    const [expandedPermitId, setExpandedPermitId] = useState<string | null>(null)
 
     useEffect(() => {
         const loadConfig = async () => {
@@ -22,6 +37,36 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
 
         void loadConfig()
     }, [])
+
+    const statusSummary = useMemo(() => {
+        const summary = new Map<string, number>()
+        permits.forEach((permit) => {
+            summary.set(permit.status, (summary.get(permit.status) ?? 0) + 1)
+        })
+        return summary
+    }, [permits])
+
+    const typeVariants = useMemo(() => Array.from(new Set(permits.map((permit) => permit.permitType))).sort(), [permits])
+    const siteVariants = useMemo(() => Array.from(new Set(permits.map((permit) => permit.siteId))).sort(), [permits])
+    const statusOptions = useMemo(() => Array.from(new Set(permits.map((permit) => permit.status))).sort(), [permits])
+
+    const filteredPermits = useMemo(() => {
+        return permits.filter((permit) => {
+            const normalizedSearch = search.trim().toLowerCase()
+            const matchesSearch =
+                normalizedSearch === '' ||
+                permit.title.toLowerCase().includes(normalizedSearch) ||
+                permit.description.toLowerCase().includes(normalizedSearch) ||
+                permit.permitType.toLowerCase().includes(normalizedSearch) ||
+                permit.siteId.toLowerCase().includes(normalizedSearch)
+
+            const matchesStatus = statusFilter === 'All' || permit.status === statusFilter
+            const matchesType = typeFilter === 'All' || permit.permitType === typeFilter
+            const matchesSite = siteFilter === 'All' || permit.siteId === siteFilter
+
+            return matchesSearch && matchesStatus && matchesType && matchesSite
+        })
+    }, [permits, search, statusFilter, typeFilter, siteFilter])
 
     const handleUpdateStatus = async (permitId: string, status: string) => {
         const permit = permits.find((item) => item.id === permitId)
@@ -42,33 +87,92 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
             notify(successMessage, 'success')
             onUpdated()
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Update failed'
+            const errorMessage = error instanceof Error ? error.message : 'Update failed.'
             setMessage(errorMessage)
             notify(errorMessage, 'error')
         }
     }
 
     return (
-        <section className="card">
-            <h3>Permit board</h3>
-            <p className="muted">Track live permit workflow progress and move permits forward.</p>
+        <section className="card permit-board-card">
+            <div className="board-header">
+                <div>
+                    <h3>Permit board</h3>
+                    <p className="muted">Filter, search, and advance permits through the workflow.</p>
+                </div>
+                <div className="status-summary">
+                    {Array.from(statusSummary.entries()).map(([status, count]) => (
+                        <span key={status} className="summary-pill">
+                            {status}: {count}
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            <div className="board-controls">
+                <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search title, description, type, or site"
+                />
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                    <option value="All">All statuses</option>
+                    {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                            {status}
+                        </option>
+                    ))}
+                </select>
+                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+                    <option value="All">All permit types</option>
+                    {typeVariants.map((type) => (
+                        <option key={type} value={type}>
+                            {type}
+                        </option>
+                    ))}
+                </select>
+                <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}>
+                    <option value="All">All sites</option>
+                    {siteVariants.map((site) => (
+                        <option key={site} value={site}>
+                            {site}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
             {message ? <p className="message">{message}</p> : null}
-            {permits.length === 0 ? (
+
+            {filteredPermits.length === 0 ? (
                 <div className="empty-state">
-                    <p>No permits yet. Raise the first permit to start the workflow.</p>
+                    <p>No matching permits. Adjust filters or clear search.</p>
                 </div>
             ) : (
                 <div className="permit-list">
-                    {permits.map((permit) => {
-                        const currentIndex = workflow.indexOf(permit.status)
-                        const availableStatuses = currentIndex === -1 ? workflow : workflow.filter((status) => status !== permit.status)
-                        const canMove = Boolean(user) && availableStatuses.length > 0
+                        {filteredPermits.map((permit) => {
+                            const canMove = Boolean(user) && workflow.length > 0
+                            const expanded = expandedPermitId === permit.id
 
                         return (
                             <article key={permit.id} className="permit-item">
-                                <div>
-                                    <strong>{permit.title}</strong>
+                                <div className="permit-summary">
+                                    <div className="permit-title-row">
+                                        <strong>{permit.title}</strong>
+                                        <button
+                                            type="button"
+                                            className="tertiary-button"
+                                            onClick={() => setExpandedPermitId(expanded ? null : permit.id ?? null)}
+                                        >
+                                            {expanded ? 'Hide details' : 'Show details'}
+                                        </button>
+                                    </div>
                                     <p>{permit.description}</p>
+                                    <div className="permit-tags">
+                                        <span>{permit.permitType}</span>
+                                        <span>{permit.siteId}</span>
+                                        <span>{permit.assignedTo?.join(', ')}</span>
+                                    </div>
                                 </div>
                                 <div className="permit-meta">
                                     <span className="status-badge">{permit.status}</span>
@@ -86,6 +190,31 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
                                         </select>
                                     ) : null}
                                 </div>
+                                {expanded ? (
+                                    <div className="permit-details">
+                                        <div>
+                                            <strong>Created by:</strong> {permit.createdBy}
+                                        </div>
+                                        <div>
+                                            <strong>Created:</strong> {formatDate(permit.createdAt)}
+                                        </div>
+                                        <div>
+                                            <strong>Updated:</strong> {formatDate(permit.updatedAt)}
+                                        </div>
+                                        {permit.customFields && Object.keys(permit.customFields).length > 0 ? (
+                                            <div className="permit-custom-fields">
+                                                <strong>Custom fields</strong>
+                                                <ul>
+                                                    {Object.entries(permit.customFields).map(([key, value]) => (
+                                                        <li key={key}>
+                                                            <strong>{key}:</strong> {value}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </article>
                         )
                     })}

@@ -4,28 +4,38 @@ import { clientConfig } from '../config/client'
 import { Notifications } from './Notifications'
 
 export function AppShell() {
-    const { user } = useAuth()
+    const { user, profile, signOutUser } = useAuth()
 
     return (
         <div className="app-shell">
             <header className="app-header">
-                <div>
+                <div className="brand">
                     <h1>{clientConfig.companyName}</h1>
                     <p>{clientConfig.siteName} · Permit to Work Suite</p>
                 </div>
-                <nav>
+                <div className="header-actions">
+                    <nav>
+                        {user ? (
+                            <>
+                                <Link to="/">Dashboard</Link>
+                                <Link to="/permits">Permits</Link>
+                            </>
+                        ) : (
+                            <>
+                                <Link to="/login">Login</Link>
+                                <Link to="/signup">Sign up</Link>
+                            </>
+                        )}
+                    </nav>
                     {user ? (
-                        <>
-                            <Link to="/">Dashboard</Link>
-                            <Link to="/permits">Permits</Link>
-                        </>
-                    ) : (
-                        <>
-                            <Link to="/login">Login</Link>
-                            <Link to="/signup">Sign up</Link>
-                        </>
-                    )}
-                </nav>
+                        <div className="user-chip">
+                            <span>{profile?.name ?? profile?.email ?? 'User'}</span>
+                            <button type="button" onClick={() => void signOutUser()}>
+                                Sign out
+                            </button>
+                        </div>
+                    ) : null}
+                </div>
             </header>
             <main>
                 <Outlet />

@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "hse-safelink",
+    "prod": "hse-safelink-prod",
+    "demo": "hse-safelink"
+  }
+}

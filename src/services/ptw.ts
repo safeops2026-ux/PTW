@@ -3,6 +3,7 @@ import {
     collection,
     doc,
     getDocs,
+    onSnapshot,
     orderBy,
     query,
     serverTimestamp,
@@ -24,20 +25,66 @@ export async function ensurePermitConfig() {
     }
 
     const defaultConfig = {
-        roles: ['Field Supervisor', 'Area Authority', 'HSE Officer', 'Admin'],
+        roles: ['Field Supervisor', 'Area Authority', 'HSE Officer', 'Supervisor', 'Manager', 'Admin'],
         workflow: ['Draft', 'Pending Review', 'Pending Approval', 'Approved', 'Work in Progress', 'Closed', 'Rejected', 'Cancelled'],
-        permitTypes: ['Hot Work', 'Confined Space', 'Electrical Isolation'],
-        sites: ['demo-site'],
+        permitTypes: [
+            'Hot Work',
+            'Confined Space',
+            'Electrical Isolation',
+            'Working at Height',
+            'Excavation / Earthworks',
+            'Line Breaking / Pipeline Maintenance',
+            'Mechanical Isolation',
+            'Permit Extension / Revalidation',
+            'Shutdown / Outage',
+            'Chemical Handling',
+            'Inspection / Survey',
+            'Temporary Power',
+        ],
+        sites: ['Main Plant', 'Boiler House', 'Pump House', 'Compressor Station', 'Control Room', 'Storage Yard', 'Workshop', 'Tank Farm', 'Loading Bay', 'Service Platform'],
     }
 
-    await setDoc(doc(configRef, 'default'), defaultConfig)
-    return defaultConfig
+    const configDocRef = doc(configRef, 'default')
+    if (snapshot.empty) {
+        await setDoc(configDocRef, defaultConfig)
+        return defaultConfig
+    }
+
+    const existingConfig = snapshot.docs[0].data() as CompanyConfig
+    const mergedConfig: CompanyConfig = {
+        roles: Array.from(new Set([...(existingConfig.roles ?? []), ...defaultConfig.roles])),
+        workflow: existingConfig.workflow?.length ? existingConfig.workflow : defaultConfig.workflow,
+        permitTypes: Array.from(new Set([...(existingConfig.permitTypes ?? []), ...defaultConfig.permitTypes])),
+        sites: Array.from(new Set([...(existingConfig.sites ?? []), ...defaultConfig.sites])),
+    }
+
+    const needsUpdate =
+        mergedConfig.roles.length !== (existingConfig.roles?.length ?? 0) ||
+        mergedConfig.workflow.length !== (existingConfig.workflow?.length ?? 0) ||
+        mergedConfig.permitTypes.length !== (existingConfig.permitTypes?.length ?? 0) ||
+        mergedConfig.sites.length !== (existingConfig.sites?.length ?? 0)
+
+    if (needsUpdate) {
+        await setDoc(configDocRef, mergedConfig)
+    }
+
+    return mergedConfig
 }
 
 export async function getPermitConfig(): Promise<CompanyConfig | null> {
     const configRef = collection(db, 'companies', companyId, 'config')
     const snapshot = await getDocs(configRef)
     return snapshot.docs.map((doc) => doc.data() as CompanyConfig)[0] ?? null
+}
+
+export function subscribeToPermits(onChange: (permits: PermitRecord[]) => void) {
+    const permitsRef = collection(db, 'companies', companyId, 'sites', siteId, 'permits')
+    const q = query(permitsRef, orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const permits = snapshot.docs.map((document) => ({ id: document.id, ...document.data() } as PermitRecord))
+        onChange(permits)
+    })
+    return unsubscribe
 }
 
 export async function getPermits() {

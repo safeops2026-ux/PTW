@@ -1,9 +1,10 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
-import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun } from 'docx'
+export async function exportPermitsToPdf(rows: Array<Record<string, unknown>>) {
+    const [{ default: jsPDF }, autoTableModule] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+    ])
 
-export function exportPermitsToPdf(rows: Array<Record<string, unknown>>) {
+    const autoTable = (autoTableModule as any).default ?? autoTableModule
     const doc = new jsPDF()
     doc.text('SafeLink PTW Permit Report', 14, 16)
     autoTable(doc, {
@@ -13,46 +14,12 @@ export function exportPermitsToPdf(rows: Array<Record<string, unknown>>) {
     doc.save('permits-report.pdf')
 }
 
-export function exportPermitsToExcel(rows: Array<Record<string, unknown>>) {
+export async function exportPermitsToExcel(rows: Array<Record<string, unknown>>) {
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(rows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Permits')
     XLSX.writeFile(workbook, 'permits-report.xlsx')
-}
-
-export async function exportPermitsToDocx(rows: Array<Record<string, unknown>>) {
-    const headings = Object.keys(rows[0] ?? {})
-    const headerRow = new TableRow({
-        children: headings.map((heading) => new TableCell({
-            children: [new Paragraph({ children: [new TextRun({ text: String(heading), bold: true })] })],
-        })),
-    })
-
-    const bodyRows = rows.map((row) =>
-        new TableRow({
-            children: headings.map((heading) => new TableCell({
-                children: [new Paragraph(String(row[heading] ?? ''))],
-            })),
-        }),
-    )
-
-    const docxDocument = new Document({
-        sections: [
-            {
-                children: [
-                    new Paragraph({ text: 'SafeLink PTW Permit Report', heading: 'Heading1' }),
-                    new Table({ rows: [headerRow, ...bodyRows] }),
-                ],
-            },
-        ],
-    })
-
-    const blob = await Packer.toBlob(docxDocument)
-    const anchor = window.document.createElement('a')
-    anchor.href = URL.createObjectURL(blob)
-    anchor.download = 'permits-report.docx'
-    anchor.click()
-    URL.revokeObjectURL(anchor.href)
 }
 
 export async function exportPermitsToImage(rows: Array<Record<string, unknown>>) {

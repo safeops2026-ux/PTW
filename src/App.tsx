@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { ExportPanel } from './components/ExportPanel'
 import { PermitBoard } from './components/PermitBoard'
 import { PermitComposer } from './components/PermitComposer'
 import { useAuth } from './context/AuthContext'
-import { getPermits } from './services/ptw'
+import { getPermits, subscribeToPermits } from './services/ptw'
 import type { PermitRecord } from './types/permit'
 
 function App() {
@@ -20,36 +20,74 @@ function App() {
   }
 
   useEffect(() => {
-    void refreshPermits()
+    let firstLoad = true
+    const unsubscribe = subscribeToPermits((data) => {
+      setPermits(data)
+      if (firstLoad) {
+        setLoadingPermits(false)
+        firstLoad = false
+      }
+    })
+    return () => unsubscribe()
   }, [])
+
+  const totals = useMemo(() => {
+    const total = permits.length
+    const closedStatuses = ['Closed', 'Cancelled', 'Rejected']
+    const closed = permits.filter((permit) => closedStatuses.includes(permit.status)).length
+    const pending = permits.filter((permit) => permit.status === 'Pending Review' || permit.status === 'Pending Approval').length
+    const open = total - closed
+    return { total, open, pending, closed }
+  }, [permits])
 
   return (
     <section className="dashboard">
-      <h2>SafeLink PTW Overview</h2>
-      <p>Role-based permit workflow with Firebase Auth, Firestore, and audit trail support.</p>
-      <p className="muted">Signed in as {profile?.email} · role: {profile?.role}</p>
-
-      <div className="card-grid">
-        <PermitComposer onCreated={() => void refreshPermits()} />
-        <div className="card">
-          <h3>Access</h3>
-          <p className="muted">Your workflow permissions are determined by your role.</p>
-          <p>
-            {profile?.role === 'Admin' && 'Admin users can raise and manage permits across the workflow.'}
-            {profile?.role === 'Field Supervisor' && 'Field Supervisors can raise permits and send them for review.'}
-            {profile?.role === 'Area Authority' && 'Area Authorities can review and advance permits to approval.'}
-            {profile?.role === 'HSE Officer' && 'HSE Officers can approve permits and close the workflow.'}
-            {!profile && 'Visit the login or signup page to sign in and access the permit dashboard.'}
+      <div className="dashboard-header">
+        <div>
+          <h2>SafeLink PTW overview</h2>
+          <p className="muted">
+            Role-based permit workflow with Firebase Auth, Firestore, and exports.
           </p>
-          {!profile ? (
-            <p>
-              <a href="/login">Login</a> or <a href="/signup">Sign up</a>.
-            </p>
-          ) : null}
+          <p className="muted">
+            Signed in as <strong>{profile?.name ?? profile?.email}</strong> · role: <span className="role-pill">{profile?.role}</span>
+          </p>
+        </div>
+        <div className="summary-card">
+          <article className="metric-card">
+            <span className="metric-value">{totals.total}</span>
+            <span className="metric-label">Total permits</span>
+          </article>
+          <article className="metric-card">
+            <span className="metric-value">{totals.open}</span>
+            <span className="metric-label">Open permits</span>
+          </article>
+          <article className="metric-card">
+            <span className="metric-value">{totals.pending}</span>
+            <span className="metric-label">Awaiting approval</span>
+          </article>
+          <article className="metric-card">
+            <span className="metric-value">{totals.closed}</span>
+            <span className="metric-label">Closed / cancelled</span>
+          </article>
         </div>
       </div>
 
-      <div className="card-grid">
+      <div className="dashboard-grid">
+        <PermitComposer onCreated={() => void refreshPermits()} />
+        <div className="card info-card">
+          <h3>GSTC / GSPL ready</h3>
+          <ul>
+            <li>Raise GSTC-style permits with site, type, description, and custom safety fields.</li>
+            <li>Use workflow status updates for review, approval, field execution, and closure.</li>
+            <li>Export permit records for audit, reporting, and contractor handover.</li>
+          </ul>
+          <p className="muted">
+            Default roles and permit types are now GSTC-focused, including work at height, excavation, line breaking, mechanical isolation, and permit revalidation.
+          </p>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
         <PermitBoard permits={permits} onUpdated={() => void refreshPermits()} />
         <ExportPanel permits={permits} />
       </div>

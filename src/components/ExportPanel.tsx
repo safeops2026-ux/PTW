@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { exportPermitsToExcel, exportPermitsToPdf, exportPermitsToDocx, exportPermitsToImage } from '../services/exports'
+import { exportPermitsToExcel, exportPermitsToPdf, exportPermitsToImage } from '../services/exports'
 import type { PermitRecord } from '../types/permit'
 
 export function ExportPanel({ permits }: { permits: PermitRecord[] }) {
@@ -14,7 +14,7 @@ export function ExportPanel({ permits }: { permits: PermitRecord[] }) {
         ...permit.customFields,
     }))
 
-    const handleExport = async (format: 'pdf' | 'excel' | 'docx' | 'image') => {
+    const handleExport = async (format: 'pdf' | 'excel' | 'image') => {
         if (!permits.length) {
             setMessage('No permits available to export.')
             return
@@ -23,14 +23,11 @@ export function ExportPanel({ permits }: { permits: PermitRecord[] }) {
         const rows = getRows()
         try {
             if (format === 'pdf') {
-                exportPermitsToPdf(rows)
+                await exportPermitsToPdf(rows)
                 setMessage('PDF export generated.')
             } else if (format === 'excel') {
-                exportPermitsToExcel(rows)
+                await exportPermitsToExcel(rows)
                 setMessage('Excel export generated.')
-            } else if (format === 'docx') {
-                await exportPermitsToDocx(rows)
-                setMessage('Word export generated.')
             } else if (format === 'image') {
                 await exportPermitsToImage(rows)
                 setMessage('PNG export generated.')
@@ -42,15 +39,17 @@ export function ExportPanel({ permits }: { permits: PermitRecord[] }) {
     }
 
     return (
-        <div className="card">
-            <h3>Export</h3>
-            <div className="export-actions">
-                <button type="button" onClick={() => void handleExport('pdf')}>Export PDF</button>
-                <button type="button" onClick={() => void handleExport('excel')}>Export Excel</button>
-                <button type="button" onClick={() => void handleExport('docx')}>Export Word</button>
-                <button type="button" onClick={() => void handleExport('image')}>Export PNG</button>
+        <div className="card export-card">
+            <div className="card-header">
+                <h3>Export permit data</h3>
+                <p className="muted">Download the current permit dataset with all custom fields.</p>
             </div>
-            {message ? <p>{message}</p> : null}
+            <div className="export-actions">
+                <button type="button" onClick={() => void handleExport('pdf')}>PDF</button>
+                <button type="button" onClick={() => void handleExport('excel')}>Excel</button>
+                <button type="button" onClick={() => void handleExport('image')}>PNG</button>
+            </div>
+            {message ? <p className="message">{message}</p> : null}
         </div>
     )
 }
