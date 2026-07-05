@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getPermitConfig, updatePermitStatus } from '../services/ptw'
-import type { PermitRecord } from '../types/permit'
+import { getPermitConfig, updatePermitStatus, getAuditTrail } from '../services/ptw'
+import type { PermitRecord, AuditEntry } from '../types/permit'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 
@@ -24,6 +24,9 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
     const [typeFilter, setTypeFilter] = useState('All')
     const [siteFilter, setSiteFilter] = useState('All')
     const [expandedPermitId, setExpandedPermitId] = useState<string | null>(null)
+    const [auditByPermit, setAuditByPermit] = useState<Record<string, AuditEntry[]>>({})
+    const [loadingAudit, setLoadingAudit] = useState<Record<string, boolean>>({})
+    const [commentMap, setCommentMap] = useState<Record<string, string>>({})
 
     useEffect(() => {
         const loadConfig = async () => {
@@ -90,6 +93,39 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
             const errorMessage = error instanceof Error ? error.message : 'Update failed.'
             setMessage(errorMessage)
             notify(errorMessage, 'error')
+        }
+    }
+
+    const loadAuditFor = async (permitId: string) => {
+        setLoadingAudit((s) => ({ ...s, [permitId]: true }))
+        try {
+            const data = await getAuditTrail(permitId)
+            setAuditByPermit((s) => ({ ...s, [permitId]: data }))
+        } catch (err) {
+            // ignore
+        } finally {
+            setLoadingAudit((s) => ({ ...s, [permitId]: false }))
+        }
+    }
+
+    const handleAction = async (permitId: string, status: string) => {
+        if (!user) {
+            setMessage('Sign in to take action on permits.')
+            return
+        }
+        const comment = (commentMap[permitId] || '').trim() || `Action: ${status}`
+        try {
+            await updatePermitStatus(permitId, status, comment, user.uid)
+            setMessage(`Permit ${status}`)
+            notify(`Permit ${status}`, 'success')
+            setCommentMap((s) => ({ ...s, [permitId]: '' }))
+            onUpdated()
+            // refresh audit
+            void loadAuditFor(permitId)
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : 'Action failed.'
+            setMessage(errMsg)
+            notify(errMsg, 'error')
         }
     }
 
@@ -213,6 +249,46 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
                                                 </ul>
                                             </div>
                                         ) : null}
+
+                                        <div className="approval-section">
+                                            <label className="field-label">Review comment</label>
+                                            <textarea
+                                                value={commentMap[permit.id ?? ''] ?? ''}
+                                                onChange={(e) => setCommentMap((s) => ({ ...s, [permit.id ?? '']: e.target.value }))}
+                                                placeholder="Add a note for the approver"
+                                                rows={2}
+                                            />
+
+                                            <div className="approval-actions">
+                                                <button type="button" className="secondary-button" onClick={() => void handleAction(permit.id ?? '', 'Pending Review')}>
+                                                    Request review
+                                                </button>
+                                                <button type="button" onClick={() => void handleAction(permit.id ?? '', 'Approved')}>
+                                                    Approve
+                                                </button>
+                                                <button type="button" className="tertiary-button" onClick={() => void handleAction(permit.id ?? '', 'Rejected')}>
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="audit-trail">
+                                            <strong>Audit trail</strong>
+                                            {loadingAudit[permit.id ?? ''] ? (
+                                                <div className="muted">Loading history...</div>
+                                            ) : auditByPermit[permit.id ?? ''] && auditByPermit[permit.id ?? ''].length > 0 ? (
+                                                <ul>
+                                                    {auditByPermit[permit.id ?? ''].map((entry) => (
+                                                        <li key={entry.id}>
+                                                            <div><strong>{entry.action}</strong> — {entry.message}</div>
+                                                            <div className="muted">By {entry.actorId} at {formatDate(entry.createdAt)}</div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <div className="muted">No history yet.</div>
+                                            )}
+                                        </div>
                                     </div>
                                 ) : null}
                             </article>
