@@ -13,8 +13,6 @@ It models a Permit to Work workflow with:
 - audit trail logging for permit changes
 - browser-based export to PDF, Excel, and PNG
 
-> Note: Word/DOCX export support has been removed in this branch.
-
 ---
 
 ## 🚀 Why this project exists
@@ -310,10 +308,6 @@ Every status change calls `updatePermitStatus()` and writes an audit event.
 - Excel via `xlsx`
 - PNG via HTML canvas image generation
 
-Export logic is handled entirely client-side.
-
----
-
 ## 🧪 How to learn this project
 
 Follow this step-by-step path for full clarity:
@@ -332,14 +326,6 @@ This order walks you from initialization, to auth, to data, to UI, and finally t
 ---
 
 ## ✅ Key takeaways
-
-- This is a Vite + React + Firebase workspace built for learners and maintainers.
-- The app is designed around Firestore-driven configuration and workflow.
-- Custom permit fields are supported without additional backend schema changes.
-- Export functions are browser-native and dynamically loaded.
-- Word export is intentionally removed to keep the bundle smaller.
-
----
 
 ## 📦 Commands summary
 

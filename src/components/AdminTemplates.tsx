@@ -7,6 +7,7 @@ export function AdminTemplates() {
     const [config, setConfig] = useState<any>(null)
     const [newType, setNewType] = useState('')
     const [newSite, setNewSite] = useState('')
+    const [newWorkflowStage, setNewWorkflowStage] = useState('')
     const [message, setMessage] = useState('')
 
     useEffect(() => {
@@ -51,6 +52,20 @@ export function AdminTemplates() {
         setMessage('Sites updated')
     }
 
+    const addWorkflowStage = async () => {
+        if (!newWorkflowStage.trim()) return
+        const next = Array.from(new Set([...(config?.workflow ?? []), newWorkflowStage.trim()]))
+        await updatePermitConfig({ workflow: next })
+        setNewWorkflowStage('')
+        setMessage('Workflow stages updated')
+    }
+
+    const removeWorkflowStage = async (stage: string) => {
+        const next = (config?.workflow ?? []).filter((x: string) => x !== stage)
+        await updatePermitConfig({ workflow: next })
+        setMessage('Workflow stages updated')
+    }
+
     return (
         <section className="card admin-card">
             <h3>Admin: Permit templates & config</h3>
@@ -61,7 +76,7 @@ export function AdminTemplates() {
                 <div className="tag-list">
                     {(config?.permitTypes ?? []).map((t: string) => (
                         <span key={t} className="tag">
-                            {t}
+                            <span>{t}</span>
                             <button type="button" className="tertiary-button" onClick={() => void removeType(t)}>Remove</button>
                         </span>
                     ))}
@@ -77,7 +92,7 @@ export function AdminTemplates() {
                 <div className="tag-list">
                     {(config?.sites ?? []).map((s: string) => (
                         <span key={s} className="tag">
-                            {s}
+                            <span>{s}</span>
                             <button type="button" className="tertiary-button" onClick={() => void removeSite(s)}>Remove</button>
                         </span>
                     ))}
@@ -85,6 +100,23 @@ export function AdminTemplates() {
                 <div style={{ marginTop: 8 }}>
                     <input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="New site" />
                     <button type="button" onClick={() => void addSite()}>Add</button>
+                </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+                <h4>Workflow Stages</h4>
+                <p className="muted">Define the sequence of statuses for a permit's lifecycle.</p>
+                <div className="tag-list">
+                    {(config?.workflow ?? []).map((stage: string) => (
+                        <span key={stage} className="tag">
+                            <span>{stage}</span>
+                            <button type="button" className="tertiary-button" onClick={() => void removeWorkflowStage(stage)}>Remove</button>
+                        </span>
+                    ))}
+                </div>
+                <div style={{ marginTop: 8 }}>
+                    <input value={newWorkflowStage} onChange={(e) => setNewWorkflowStage(e.target.value)} placeholder="New workflow stage" />
+                    <button type="button" onClick={() => void addWorkflowStage()}>Add</button>
                 </div>
             </div>
 

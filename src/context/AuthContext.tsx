@@ -7,10 +7,12 @@ import {
     type ReactNode,
 } from 'react'
 import {
+    browserLocalPersistence,
     createUserWithEmailAndPassword,
     GoogleAuthProvider,
     onAuthStateChanged,
     sendPasswordResetEmail,
+    setPersistence,
     signInWithEmailAndPassword,
     signInWithPopup,
     signOut,
@@ -42,6 +44,34 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
+function getFriendlyAuthErrorMessage(error: unknown) {
+    if (typeof error !== 'object' || error === null) {
+        return 'Authentication failed. Please try again.'
+    }
+
+    const code = 'code' in error && typeof error.code === 'string' ? error.code : ''
+
+    switch (code) {
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.'
+        case 'auth/user-disabled':
+            return 'This account has been disabled.'
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+            return 'Email or password is incorrect.'
+        case 'auth/email-already-in-use':
+            return 'This email is already registered. Please sign in instead.'
+        case 'auth/weak-password':
+            return 'Please choose a stronger password with at least 6 characters.'
+        case 'auth/network-request-failed':
+            return 'Network error. Please check your connection and try again.'
+        case 'auth/popup-closed-by-user':
+            return 'Google sign-in was cancelled.'
+        default:
+            return error instanceof Error ? error.message : 'Authentication failed. Please try again.'
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -49,20 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const fetchUserProfile = async (firebaseUser: User) => {
         const userRef = doc(db, 'companies', 'demo-company', 'users', firebaseUser.uid)
-        const snapshot = await getDoc(userRef)
-        if (snapshot.exists()) {
-            const data = snapshot.data() as UserProfile
-            setProfile({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                role: data.role || 'Field Supervisor',
-                name: data.name || firebaseUser.displayName || null,
-                phone: data.phone || firebaseUser.phoneNumber || null,
-                createdAt: data.createdAt || new Date().toISOString(),
-            })
-            return
-        }
-
         const fallbackProfile: UserProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -72,8 +88,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             createdAt: new Date().toISOString(),
         }
 
-        await setDoc(userRef, fallbackProfile)
-        setProfile(fallbackProfile)
+        try {
+            const snapshot = await getDoc(userRef)
+            if (snapshot.exists()) {
+                const data = snapshot.data() as UserProfile
+                const nextProfile: UserProfile = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    role: data.role || 'Field Supervisor',
+                    name: data.name || firebaseUser.displayName || null,
+                    phone: data.phone || firebaseUser.phoneNumber || null,
+                    createdAt: data.createdAt || new Date().toISOString(),
+                }
+                setProfile(nextProfile)
+                return
+            }
+
+            await setDoc(userRef, fallbackProfile, { merge: true })
+            setProfile(fallbackProfile)
+        } catch (error) {
+            console.error('Unable to sync user profile:', error)
+            setProfile(fallbackProfile)
+        }
     }
 
     const ensureUserProfile = async (firebaseUser: User, role: string, name: string, phone: string) => {
@@ -86,46 +122,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             phone,
             createdAt: new Date().toISOString(),
         }
-        await setDoc(userRef, profileData, { merge: true })
+
+        try {
+            await setDoc(userRef, profileData, { merge: true })
+        } catch (error) {
+            console.error('Unable to persist profile:', error)
+        }
+
         setProfile(profileData)
     }
 
     useEffect(() => {
+        let isMounted = true
+
         const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+            if (!isMounted) return
             setUser(nextUser)
             if (nextUser) {
                 await fetchUserProfile(nextUser)
             } else {
                 setProfile(null)
             }
-            setLoading(false)
+            if (isMounted) {
+                setLoading(false)
+            }
         })
 
-        return () => unsubscribe()
+        return () => {
+            isMounted = false
+            unsubscribe()
+        }
     }, [])
 
     const signIn = async (email: string, password: string) => {
-        const result = await signInWithEmailAndPassword(auth, email, password)
-        await fetchUserProfile(result.user)
-        setUser(result.user)
+        setLoading(true)
+        try {
+            await setPersistence(auth, browserLocalPersistence)
+            const result = await signInWithEmailAndPassword(auth, email, password)
+            await fetchUserProfile(result.user)
+            setUser(result.user)
+        } catch (error) {
+            throw new Error(getFriendlyAuthErrorMessage(error))
+        } finally {
+            setLoading(false)
+        }
     }
 
     const signInWithGoogle = async () => {
-        const provider = new GoogleAuthProvider()
-        const result = await signInWithPopup(auth, provider)
-        await fetchUserProfile(result.user)
-        setUser(result.user)
+        setLoading(true)
+        try {
+            await setPersistence(auth, browserLocalPersistence)
+            const provider = new GoogleAuthProvider()
+            const result = await signInWithPopup(auth, provider)
+            await fetchUserProfile(result.user)
+            setUser(result.user)
+        } catch (error) {
+            throw new Error(getFriendlyAuthErrorMessage(error))
+        } finally {
+            setLoading(false)
+        }
     }
 
     const signUp = async (email: string, password: string, name: string, phone: string) => {
-        const result = await createUserWithEmailAndPassword(auth, email, password)
-        await updateProfile(result.user, { displayName: name })
-        await ensureUserProfile(result.user, 'Field Supervisor', name, phone)
-        setUser(result.user)
+        setLoading(true)
+        try {
+            await setPersistence(auth, browserLocalPersistence)
+            const result = await createUserWithEmailAndPassword(auth, email, password)
+            await updateProfile(result.user, { displayName: name })
+            await ensureUserProfile(result.user, 'Field Supervisor', name, phone)
+            setUser(result.user)
+        } catch (error) {
+            throw new Error(getFriendlyAuthErrorMessage(error))
+        } finally {
+            setLoading(false)
+        }
     }
 
     const resetPassword = async (email: string) => {
-        await sendPasswordResetEmail(auth, email)
+        try {
+            await sendPasswordResetEmail(auth, email)
+        } catch (error) {
+            throw new Error(getFriendlyAuthErrorMessage(error))
+        }
     }
 
     const signOutUser = async () => {

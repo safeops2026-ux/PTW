@@ -1,28 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getPermitConfig, subscribeToConfig, updatePermitStatus, getAuditTrail } from '../services/ptw'
-import type { PermitRecord, AuditEntry } from '../types/permit'
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { updatePermitStatus, getAuditTrail, bulkUpdatePermitStatus, bulkDeletePermits } from '../services/ptw'
+import type { PermitRecord, AuditEntry, CompanyConfig } from '../types/permit'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+import { PermitCard } from './PermitCard'
 
-function formatDate(value: unknown) {
-    if (!value) return 'Unknown'
-    if (typeof value === 'string') return value
-    if (typeof value === 'number') return new Date(value).toLocaleString()
-    if (typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
-        return value.toDate().toLocaleString()
-    }
-    return String(value)
+interface PermitBoardProps {
+    permits: PermitRecord[]
+    allPermits: PermitRecord[]
+    config: CompanyConfig | null
+    onUpdated: () => void
+    search: string
+    setSearch: (s: string) => void
+    statusFilter: string
+    setStatusFilter: (s: string) => void
+    typeFilter: string
+    setTypeFilter: (s: string) => void
+    siteFilter: string
+    setSiteFilter: (s: string) => void
+    selectedPermitIds: string[]
+    setSelectedPermitIds: (ids: string[]) => void
 }
 
-export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; onUpdated: () => void }) {
+export function PermitBoard({ permits: filteredPermits, allPermits, config, onUpdated, search, setSearch, statusFilter, setStatusFilter, typeFilter, setTypeFilter, siteFilter, setSiteFilter, selectedPermitIds, setSelectedPermitIds }: PermitBoardProps) {
     const { user, profile } = useAuth()
     const { notify } = useNotification()
     const [message, setMessage] = useState('')
     const [workflow, setWorkflow] = useState<string[]>([])
-    const [search, setSearch] = useState('')
-    const [statusFilter, setStatusFilter] = useState('All')
-    const [typeFilter, setTypeFilter] = useState('All')
-    const [siteFilter, setSiteFilter] = useState('All')
     const [expandedPermitId, setExpandedPermitId] = useState<string | null>(null)
     const [auditByPermit, setAuditByPermit] = useState<Record<string, AuditEntry[]>>({})
     const [loadingAudit, setLoadingAudit] = useState<Record<string, boolean>>({})
@@ -30,53 +36,30 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
 
     useEffect(() => {
         let unsub: (() => void) | undefined
-        void (async () => {
-            const data = await getPermitConfig()
-            if (data?.workflow) setWorkflow(data.workflow)
-            else setWorkflow(['Draft', 'Pending Review', 'Pending Approval', 'Approved'])
-
-            unsub = subscribeToConfig((cfg) => {
-                if (cfg.workflow) setWorkflow(cfg.workflow)
-            })
-        })()
+        if (config?.workflow) {
+            setWorkflow(config.workflow)
+        } else {
+            setWorkflow(['Draft', 'Pending Review', 'Pending Approval', 'Approved', 'Work in Progress', 'Closed', 'Rejected', 'Cancelled'])
+        }
 
         return () => unsub?.()
-    }, [])
+    }, [config])
 
     const statusSummary = useMemo(() => {
         const summary = new Map<string, number>()
-        permits.forEach((permit) => {
+        allPermits.forEach((permit) => {
             summary.set(permit.status, (summary.get(permit.status) ?? 0) + 1)
         })
         return summary
-    }, [permits])
+    }, [allPermits])
 
-    const typeVariants = useMemo(() => Array.from(new Set(permits.map((permit) => permit.permitType))).sort(), [permits])
-    const siteVariants = useMemo(() => Array.from(new Set(permits.map((permit) => permit.siteId))).sort(), [permits])
-    const statusOptions = useMemo(() => Array.from(new Set(permits.map((permit) => permit.status))).sort(), [permits])
+    const typeVariants = useMemo(() => Array.from(new Set(allPermits.map((permit) => permit.permitType))).sort(), [allPermits])
+    const siteVariants = useMemo(() => Array.from(new Set([...(config?.sites ?? []), ...allPermits.map((permit) => permit.siteId)])).sort(), [config, allPermits])
+    const statusOptions = useMemo(() => Array.from(new Set(allPermits.map((permit) => permit.status))).sort(), [allPermits])
 
-    const filteredPermits = useMemo(() => {
-        return permits.filter((permit) => {
-            const normalizedSearch = search.trim().toLowerCase()
-            const matchesSearch =
-                normalizedSearch === '' ||
-                permit.title.toLowerCase().includes(normalizedSearch) ||
-                permit.description.toLowerCase().includes(normalizedSearch) ||
-                permit.permitType.toLowerCase().includes(normalizedSearch) ||
-                permit.siteId.toLowerCase().includes(normalizedSearch)
-
-            const matchesStatus = statusFilter === 'All' || permit.status === statusFilter
-            const matchesType = typeFilter === 'All' || permit.permitType === typeFilter
-            const matchesSite = siteFilter === 'All' || permit.siteId === siteFilter
-
-            return matchesSearch && matchesStatus && matchesType && matchesSite
-        })
-    }, [permits, search, statusFilter, typeFilter, siteFilter])
-
-    const approverRoles = ['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin']
 
     const handleUpdateStatus = async (permitId: string, status: string) => {
-        const permit = permits.find((item) => item.id === permitId)
+        const permit = allPermits.find((item) => item.id === permitId)
         if (!permit || !user) {
             setMessage('Sign in to update a permit.')
             return
@@ -88,8 +71,8 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
         }
 
         const isCreator = profile && permit.createdBy === profile.uid
-        const isApprover = profile && approverRoles.includes(profile.role)
-        if (!isCreator && !isApprover) {
+        // Allow any authenticated user with a role to update status
+        if (!isCreator && !profile?.role) {
             setMessage('You do not have permission to change this permit status.')
             return
         }
@@ -119,6 +102,13 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
         }
     }
 
+    const togglePermitExpansion = (permitId: string) => {
+        const newExpandedId = expandedPermitId === permitId ? null : permitId
+        setExpandedPermitId(newExpandedId)
+        // if we are expanding and audit trail is not loaded, load it.
+        if (newExpandedId && !auditByPermit[newExpandedId]) void loadAuditFor(newExpandedId)
+    }
+
     const handleAction = async (permitId: string, status: string) => {
         if (!user) {
             setMessage('Sign in to take action on permits.')
@@ -140,6 +130,67 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
         }
     }
 
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedPermitIds(filteredPermits.map(p => p.id!))
+        } else {
+            setSelectedPermitIds([])
+        }
+    }
+
+    const handleSelectOne = (permitId: string, isSelected: boolean) => {
+        if (isSelected) {
+            setSelectedPermitIds([...selectedPermitIds, permitId])
+        } else {
+            setSelectedPermitIds(selectedPermitIds.filter(id => id !== permitId))
+        }
+    }
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (over) {
+            const permitId = String(active.id)
+            // The `over.id` can be a column ID (status) or another permit ID.
+            // The `over.data.current?.sortable.containerId` gives us the column ID reliably.
+            const newStatus = over.data.current?.sortable?.containerId ?? over.id;
+
+            const permit = allPermits.find(p => p.id === permitId);
+
+            if (permit && permit.status !== newStatus && workflow.includes(String(newStatus))) {
+                void handleUpdateStatus(permitId, newStatus)
+            }
+        }
+    }
+
+    const handleBulkAction = async (action: 'approve' | 'reject' | 'delete') => {
+        if (selectedPermitIds.length === 0) {
+            notify('No permits selected.', 'error')
+            return
+        }
+
+        const actionVerb = action === 'delete' ? 'deleted' : (action === 'approve' ? 'approved' : 'rejected')
+        const status = action === 'approve' ? 'Approved' : 'Rejected'
+
+        try {
+            // Optimistic UI update
+            onUpdated() // This will trigger a re-fetch from App.tsx
+            notify(`${selectedPermitIds.length} permits will be ${actionVerb}.`, 'info')
+            setSelectedPermitIds([]) // Clear selection immediately
+
+            if (action === 'delete') {
+                await bulkDeletePermits(selectedPermitIds, user!.uid)
+            } else {
+                await bulkUpdatePermitStatus(selectedPermitIds, status, `Bulk ${actionVerb} by ${profile?.name}`, user!.uid)
+            }
+
+            notify(`Bulk action successful.`, 'success')
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : 'Bulk action failed.'
+            notify(errMsg, 'error')
+        }
+    }
+
     return (
         <section className="card permit-board-card">
             <div className="board-header">
@@ -157,6 +208,15 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
             </div>
 
             <div className="board-controls">
+                <div className="checkbox-item select-all-control">
+                    <input
+                        type="checkbox"
+                        id="select-all"
+                        onChange={handleSelectAll}
+                        checked={filteredPermits.length > 0 && selectedPermitIds.length === filteredPermits.length}
+                    />
+                    <label htmlFor="select-all">Select All</label>
+                </div>
                 <input
                     type="search"
                     value={search}
@@ -191,126 +251,55 @@ export function PermitBoard({ permits, onUpdated }: { permits: PermitRecord[]; o
 
             {message ? <p className="message">{message}</p> : null}
 
-            {filteredPermits.length === 0 ? (
-                <div className="empty-state">
-                    <p>No matching permits. Adjust filters or clear search.</p>
+            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <div className="kanban-board">
+                    {workflow.map(status => (
+                        <SortableContext key={status} id={status} items={filteredPermits.filter(p => p.status === status).map(p => p.id!)} strategy={verticalListSortingStrategy}>
+                            <div id={status} className="kanban-column">
+                                <div className="kanban-column-header">
+                                    <h3>{status}</h3>
+                                    <span className="kanban-column-count">{filteredPermits.filter(p => p.status === status).length}</span>
+                                </div>
+                                <div className="kanban-column-body">
+                                    {filteredPermits.filter(p => p.status === status).map(permit => (
+                                        <PermitCard
+                                            key={permit.id}
+                                            permit={permit}
+                                            expanded={expandedPermitId === permit.id}
+                                            canMove={Boolean(user) && workflow.length > 0 && (profile ? (Boolean(profile.role) || permit.createdBy === profile.uid) : false)}
+                                            workflow={workflow}
+                                            profile={profile}
+                                            commentMap={commentMap}
+                                            loadingAudit={loadingAudit}
+                                            auditByPermit={auditByPermit}
+                                            onToggleExpand={togglePermitExpansion}
+                                            onUpdateStatus={handleUpdateStatus}
+                                            onSelect={handleSelectOne}
+                                            onAction={handleAction}
+                                            onCommentChange={(id, comment) => setCommentMap(s => ({ ...s, [id]: comment }))}
+                                            isSelected={selectedPermitIds.includes(permit.id!)}
+                                        />
+                                    ))}
+                                    {filteredPermits.filter(p => p.status === status).length === 0 && (
+                                        <div className="kanban-empty-state">
+                                            <p>No permits in this stage.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </SortableContext>
+                    ))}
                 </div>
-            ) : (
-                <div className="permit-list">
-                        {filteredPermits.map((permit) => {
-                            const canMove = Boolean(user) && workflow.length > 0 && (profile ? (['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin'].includes(profile.role) || permit.createdBy === profile.uid) : false)
-                            const expanded = expandedPermitId === permit.id
+            </DndContext>
 
-                        return (
-                            <article key={permit.id} className="permit-item">
-                                <div className="permit-summary">
-                                    <div className="permit-title-row">
-                                        <strong>{permit.title}</strong>
-                                        <button
-                                            type="button"
-                                            className="tertiary-button"
-                                            onClick={() => setExpandedPermitId(expanded ? null : permit.id ?? null)}
-                                        >
-                                            {expanded ? 'Hide details' : 'Show details'}
-                                        </button>
-                                    </div>
-                                    <p>{permit.description}</p>
-                                    <div className="permit-tags">
-                                        <span>{permit.permitType}</span>
-                                        <span>{permit.siteId}</span>
-                                        <span>{permit.assignedTo?.join(', ')}</span>
-                                    </div>
-                                </div>
-                                <div className="permit-meta">
-                                    <span className="status-badge">{permit.status}</span>
-                                    {workflow.length > 0 ? (
-                                        <select
-                                            value={permit.status}
-                                            onChange={(event) => void handleUpdateStatus(permit.id ?? '', event.target.value)}
-                                            disabled={!canMove}
-                                        >
-                                            {workflow.map((status) => (
-                                                <option key={status} value={status}>
-                                                    {status}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    ) : null}
-                                </div>
-                                {expanded ? (
-                                    <div className="permit-details">
-                                        <div>
-                                            <strong>Created by:</strong> {permit.createdBy}
-                                        </div>
-                                        <div>
-                                            <strong>Created:</strong> {formatDate(permit.createdAt)}
-                                        </div>
-                                        <div>
-                                            <strong>Updated:</strong> {formatDate(permit.updatedAt)}
-                                        </div>
-                                        {permit.customFields && Object.keys(permit.customFields).length > 0 ? (
-                                            <div className="permit-custom-fields">
-                                                <strong>Custom fields</strong>
-                                                <ul>
-                                                    {Object.entries(permit.customFields).map(([key, value]) => (
-                                                        <li key={key}>
-                                                            <strong>{key}:</strong> {value}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        ) : null}
-
-                                        <div className="approval-section">
-                                            <label className="field-label">Review comment</label>
-                                            <textarea
-                                                value={commentMap[permit.id ?? ''] ?? ''}
-                                                onChange={(e) => setCommentMap((s) => ({ ...s, [permit.id ?? '']: e.target.value }))}
-                                                placeholder="Add a note for the approver"
-                                                rows={2}
-                                            />
-
-                                            <div className="approval-actions">
-                                                {profile && ((['HSE', 'Issuer', 'Site Manager', 'Safety Officer', 'Admin'].includes(profile.role)) || (permit.assignedTo ?? []).includes(profile.role)) ? (
-                                                    <>
-                                                        <button type="button" className="secondary-button" onClick={() => void handleAction(permit.id ?? '', 'Pending Review')}>
-                                                            Request review
-                                                        </button>
-                                                        <button type="button" onClick={() => void handleAction(permit.id ?? '', 'Approved')}>
-                                                            Approve
-                                                        </button>
-                                                        <button type="button" className="tertiary-button" onClick={() => void handleAction(permit.id ?? '', 'Rejected')}>
-                                                            Reject
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <div className="muted">You do not have approval permissions for this permit.</div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="audit-trail">
-                                            <strong>Audit trail</strong>
-                                            {loadingAudit[permit.id ?? ''] ? (
-                                                <div className="muted">Loading history...</div>
-                                            ) : auditByPermit[permit.id ?? ''] && auditByPermit[permit.id ?? ''].length > 0 ? (
-                                                <ul>
-                                                    {auditByPermit[permit.id ?? ''].map((entry) => (
-                                                        <li key={entry.id}>
-                                                            <div><strong>{entry.action}</strong> — {entry.message}</div>
-                                                            <div className="muted">By {entry.actorId} at {formatDate(entry.createdAt)}</div>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                <div className="muted">No history yet.</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </article>
-                        )
-                    })}
+            {selectedPermitIds.length > 0 && (
+                <div className="bulk-actions-toolbar">
+                    <span>{selectedPermitIds.length} permit(s) selected</span>
+                    <div className="action-row">
+                        <button type="button" className="secondary-button" onClick={() => handleBulkAction('approve')}>Bulk Approve</button>
+                        <button type="button" className="tertiary-button" onClick={() => handleBulkAction('reject')}>Bulk Reject</button>
+                        <button type="button" className="danger-button" onClick={() => handleBulkAction('delete')}>Delete</button>
+                    </div>
                 </div>
             )}
         </section>

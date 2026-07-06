@@ -5,13 +5,19 @@ import { PermitBoard } from './components/PermitBoard'
 import { PermitComposer } from './components/PermitComposer'
 import { AdminTemplates } from './components/AdminTemplates'
 import { useAuth } from './context/AuthContext'
-import { getPermits, subscribeToPermits } from './services/ptw'
-import type { PermitRecord } from './types/permit'
+import { getPermits, subscribeToPermits, getPermitConfig, subscribeToConfig } from './services/ptw'
+import type { PermitRecord, CompanyConfig } from './types/permit'
 
 function App() {
   const { profile } = useAuth()
   const [permits, setPermits] = useState<PermitRecord[]>([])
   const [loadingPermits, setLoadingPermits] = useState(true)
+  const [config, setConfig] = useState<CompanyConfig | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [typeFilter, setTypeFilter] = useState('All')
+  const [siteFilter, setSiteFilter] = useState('All')
+  const [selectedPermitIds, setSelectedPermitIds] = useState<string[]>([])
 
   const refreshPermits = async () => {
     setLoadingPermits(true)
@@ -22,14 +28,25 @@ function App() {
 
   useEffect(() => {
     let firstLoad = true
-    const unsubscribe = subscribeToPermits((data) => {
+    const unsubPermits = subscribeToPermits((data) => {
       setPermits(data)
       if (firstLoad) {
         setLoadingPermits(false)
         firstLoad = false
       }
     })
-    return () => unsubscribe()
+
+    let unsubConfig: (() => void) | undefined
+    void (async () => {
+      const data = await getPermitConfig()
+      setConfig(data)
+      unsubConfig = subscribeToConfig(setConfig)
+    })()
+
+    return () => {
+      unsubPermits()
+      unsubConfig?.()
+    }
   }, [])
 
   const totals = useMemo(() => {
@@ -40,6 +57,33 @@ function App() {
     const open = total - closed
     return { total, open, pending, closed }
   }, [permits])
+
+  const filteredPermits = useMemo(() => {
+    return permits.filter((permit) => {
+      const normalizedSearch = searchTerm.trim().toLowerCase()
+      const matchesSearch =
+        normalizedSearch === '' ||
+        permit.title.toLowerCase().includes(normalizedSearch) ||
+        permit.description.toLowerCase().includes(normalizedSearch) ||
+        permit.permitType.toLowerCase().includes(normalizedSearch) ||
+        permit.siteId.toLowerCase().includes(normalizedSearch)
+
+      const matchesStatus = statusFilter === 'All' || permit.status === statusFilter
+      const matchesType = typeFilter === 'All' || permit.permitType === typeFilter
+      const matchesSite = siteFilter === 'All' || permit.siteId === siteFilter
+
+      return matchesSearch && matchesStatus && matchesType && matchesSite
+    })
+  }, [permits, searchTerm, statusFilter, typeFilter, siteFilter])
+
+  const permitsForExport = useMemo(() => {
+    if (selectedPermitIds.length > 0) {
+      // If specific permits are selected, export only those
+      return permits.filter(p => selectedPermitIds.includes(p.id!))
+    }
+    // Otherwise, export the currently filtered list
+    return filteredPermits
+  }, [selectedPermitIds, filteredPermits, permits])
 
   return (
     <section className="dashboard">
@@ -73,7 +117,7 @@ function App() {
         </div>
       </div>
 
-      <div className="dashboard-grid">
+      <div className="dashboard-grid dashboard-grid-main-sidebar">
         <PermitComposer onCreated={() => void refreshPermits()} />
         <div className="card info-card">
           <h3>GSTC / GSPL ready</h3>
@@ -95,8 +139,22 @@ function App() {
       ) : null}
 
       <div className="dashboard-grid">
-        <PermitBoard permits={permits} onUpdated={() => void refreshPermits()} />
-        <ExportPanel permits={permits} />
+        <PermitBoard
+          permits={filteredPermits}
+          allPermits={permits}
+          config={config}
+          search={searchTerm}
+          setSearch={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+          selectedPermitIds={selectedPermitIds}
+          setSelectedPermitIds={setSelectedPermitIds}
+          siteFilter={siteFilter}
+          setSiteFilter={setSiteFilter}
+          onUpdated={() => void refreshPermits()} />
+        <ExportPanel permits={permitsForExport} />
       </div>
 
       {loadingPermits ? <p className="muted">Loading permits…</p> : null}

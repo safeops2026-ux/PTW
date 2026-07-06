@@ -10,6 +10,7 @@ import {
     setDoc,
     updateDoc,
     where,
+    writeBatch,
 } from 'firebase/firestore'
 import { db, storage } from './firebase'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
@@ -42,7 +43,7 @@ export async function ensurePermitConfig() {
             'Inspection / Survey',
             'Temporary Power',
         ],
-        sites: ['Main Plant', 'Boiler House', 'Pump House', 'Compressor Station', 'Control Room', 'Storage Yard', 'Workshop', 'Tank Farm', 'Loading Bay', 'Service Platform'],
+        sites: ['Main Plant', 'Boiler House', 'Pump House', 'Compressor Station', 'Control Room', 'Storage Yard', 'Workshop', 'Tank Farm', 'Loading Bay', 'Service Platform', 'Warehouse', 'Office Block', 'Drilling Pad', 'Jetty', 'Substation', 'Wastewater Plant', 'Utility Corridor', 'North Access Road', 'South Access Road'],
     }
 
     const configDocRef = doc(configRef, 'default')
@@ -178,4 +179,51 @@ export async function getAuditTrail(permitId: string) {
     const q = query(auditRef, where('permitId', '==', permitId), orderBy('createdAt', 'desc'))
     const snapshot = await getDocs(q)
     return snapshot.docs.map((document) => ({ id: document.id, ...document.data() } as AuditEntry))
+}
+
+export async function bulkUpdatePermitStatus(permitIds: string[], status: string, message: string, actorId: string) {
+    const batch = writeBatch(db)
+
+    permitIds.forEach(permitId => {
+        // Update permit status
+        const permitRef = doc(db, 'companies', companyId, 'sites', siteId, 'permits', permitId)
+        batch.update(permitRef, {
+            status,
+            updatedAt: serverTimestamp(),
+        })
+
+        // Add audit trail entry
+        const auditRef = doc(collection(db, 'companies', companyId, 'sites', siteId, 'auditTrail'))
+        batch.set(auditRef, {
+            permitId,
+            actorId,
+            action: `Status changed to ${status}`,
+            message,
+            createdAt: serverTimestamp(),
+        })
+    })
+
+    await batch.commit()
+}
+
+export async function bulkDeletePermits(permitIds: string[], actorId: string) {
+    const batch = writeBatch(db)
+
+    permitIds.forEach(permitId => {
+        // Delete the permit
+        const permitRef = doc(db, 'companies', companyId, 'sites', siteId, 'permits', permitId)
+        batch.delete(permitRef)
+
+        // Add a final audit trail entry for deletion
+        const auditRef = doc(collection(db, 'companies', companyId, 'sites', siteId, 'auditTrail'))
+        batch.set(auditRef, {
+            permitId,
+            actorId,
+            action: 'Permit deleted',
+            message: `Permit with ID ${permitId} was permanently deleted.`,
+            createdAt: serverTimestamp(),
+        })
+    })
+
+    await batch.commit()
 }
