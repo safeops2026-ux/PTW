@@ -107,11 +107,21 @@ export const exportToProfessionalPdf = async (permits: PermitRecord[], columns: 
         },
         margin: { top: 35, bottom: 20 },
         styles: {
-            font: 'helvetica', // Ensure font is consistent
+            font: 'helvetica',
             fontSize: 8,
+            overflow: 'linebreak', // Prevent text from overflowing cells
         },
         headStyles: { fillColor: [37, 99, 235] }, // primary-color
         alternateRowStyles: { fillColor: [248, 250, 252] }, // background-light
+        tableWidth: 'auto', // Let the table grow with content, respecting column styles
+        columnStyles: {
+            // Give specific widths to columns with long text to prevent fragmentation
+            title: { cellWidth: 40 },
+            description: { cellWidth: 60 },
+            'Identified Hazards': { cellWidth: 40 },
+            'Implemented Controls': { cellWidth: 40 },
+            // Let other columns be calculated automatically
+        },
     })
 
     drawSummaryBoxes()
